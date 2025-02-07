@@ -87,3 +87,9 @@ def filter_data(data):
     filtered_SFH, filtered_mass_presentsfr, filtered_labels = filter_zeroes(inputHistories, mass_presentsfr, labels)
     filtered_AH = np.array([(sfh / (np.trapz(sfh)) * 500) for sfh in filtered_SFH]) # Normalization into AHs
     return filtered_AH, filtered_mass_presentsfr, filtered_labels
+
+def un_one_hot(one_hot_array):
+    """
+    Un-one hot encodes an array
+    """
+    return np.argmax(one_hot_array, axis=-1)
