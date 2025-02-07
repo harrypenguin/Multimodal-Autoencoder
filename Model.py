@@ -16,7 +16,7 @@ class ConvAutoencoder(nn.Module):
         self.fc2 = nn.Linear(64, 32)
         self.fc3 = nn.Linear(32, 16)  # Latent space
         
-        # Decoder (Pathway 1)
+        # Pathway 1: Conv decoder
         self.fc4 = nn.Linear(16, 32)
         self.fc5 = nn.Linear(32, 64)
         self.fc6 = nn.Linear(64, 16 * 7)
