@@ -28,7 +28,7 @@ class ConvAutoencoder(nn.Module):
         # Pathway 2: MLP for simulation type classification
         self.fc_sim1 = nn.Linear(16, 100)
         self.fc_sim2 = nn.Linear(100, 100)
-        self.fc_sim3 = nn.Linear(100, 10)
+        self.fc_sim3 = nn.Linear(100, 7)
         
         # Pathway 3: MLP for SM and SFR prediction
         self.fc_sfr1 = nn.Linear(16, 200)

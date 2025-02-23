@@ -69,15 +69,15 @@ def filter_data(data):
     for i in range(len(labels)):
         if labels[i] == 'Eagle':
             labels[i] = 0
-        elif labels[i] == 'Illustris':
-            labels[i] = 1
-        elif labels[i] == 'IllustrisTNG':
-            labels[i] = 2
         elif labels[i] == 'Mufasa':
-            labels[i] = 3
-        elif labels[i] == 'Simba':
-            labels[i] = 4
+            labels[i] = 1
         elif labels[i] == 'SC-Sam':
+            labels[i] = 2
+        elif labels[i] == 'Simba':
+            labels[i] = 3
+        elif labels[i] == 'Illustris':
+            labels[i] = 4
+        elif labels[i] == 'IllustrisTNG':
             labels[i] = 5
         elif labels[i] == 'UniverseMachine':
             labels[i] = 6
