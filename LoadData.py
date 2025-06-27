@@ -4,31 +4,34 @@ import scipy.io as sio
 
 def loaddata(simulation_names: list):
     """
-    Load data from the simulation data files (in simulation_names) and interpolate the SFHs to 139 timesteps.
+    Load data from the simulation data files (in simulation_names) and interpolate the SFHs to 136 timesteps.
     Returns [sfhs, [logmass, arcsinh(presentsfr)]] for each galaxy in the simulation data.
     """
     work_dir = '/Users/pengzehao/Desktop/Multimodal/Iyer_etal_2020_SFH_data/'
     extn = '_sfhs_psds.mat'
 
     combined = []
+    x = np.linspace(0.1, 13.6, 139)  # 139 time bins from 0.1 to 13.6 Gyr
+
     for sim_name in simulation_names:
         sim_data = sio.loadmat(work_dir + sim_name + extn)
+        smalltime = sim_data['smalltime'][0]  # actual time grid
+        raw_sfhs = sim_data['smallsfhs'].T
 
-        # Interpolating SFHs into 139 timesteps 
-        x = np.linspace(0, 14, 139) # creating general array to act as universal timestep array, with 139 timesteps
-        sfhs = np.zeros((len(sim_data['smallsfhs'].T), 139)) # creating a np array of all 0s of size (number of galaxies, 139)
-        xp = np.linspace(0, 14, len(sim_data['smallsfhs'].T[0])) 
-        for i in range(len(sim_data['smallsfhs'].T)):
-            sfhs[i] = np.interp(x, xp, sim_data['smallsfhs'].T[i])
-            
-        presentsfr = sfhs[:, -1]  # Accessing the last time step for redshift 0 sfr
+        sfhs = np.zeros((len(raw_sfhs), len(x)))
+        for i in range(len(raw_sfhs)):
+            sfhs[i] = np.interp(x, smalltime, raw_sfhs[i])  # interpolate to new grid
+            # "Step 4"
+
+        presentsfr = sfhs[:, -1]
         logmass = np.array(sim_data['logmass'].ravel())
+
         if sim_name in ['Simba', 'Mufasa']:
-            combined = combined + [[arr, [m, np.arcsinh(s)], sim_name] for arr, m, s in zip(sfhs, logmass, presentsfr) if m > 10]
+            combined += [[arr, [m, np.arcsinh(s)], sim_name] for arr, m, s in zip(sfhs, logmass, presentsfr) if m > 10]
         else:
-            combined = combined + [[arr, [m, np.arcsinh(s)], sim_name] for arr, m, s in zip(sfhs, logmass, presentsfr) if m > 9]
-        # Setting a cut off for mass, categorized by simulation
-            
+            combined += [[arr, [m, np.arcsinh(s)], sim_name] for arr, m, s in zip(sfhs, logmass, presentsfr) if m > 9]
+        # "Step 1"
+
     return combined
 
 def filter_zeroes(inputHistories, mass_presentsfr, labels):
@@ -42,6 +45,7 @@ def filter_zeroes(inputHistories, mass_presentsfr, labels):
 
     return inputHistories[mask], mass_presentsfr[mask], labels[mask]
 
+# "Step 2"
 def count_zeroes(inputHistories, mass_presentsfr, labels):
     """
     Count the number of galaxies with zero SFH by simulation.
@@ -85,7 +89,8 @@ def filter_data(data):
 
 
     filtered_SFH, filtered_mass_presentsfr, filtered_labels = filter_zeroes(inputHistories, mass_presentsfr, labels)
-    filtered_AH = np.array([(sfh / (np.trapz(sfh)) * 500) for sfh in filtered_SFH]) # Normalization into AHs
+    filtered_AH = np.array([(sfh / (np.trapz(sfh))) for sfh in filtered_SFH]) # Normalization into AHs
+    # "Step 3"
     return filtered_AH, filtered_mass_presentsfr, filtered_labels
 
 def un_one_hot(one_hot_array):
