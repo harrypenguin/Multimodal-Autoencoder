@@ -97,9 +97,43 @@ def compute_loss(sfh_output, sfh_target, sim_type_output, sim_type_target, mass_
     # print(f'Loss: {total_loss:.3f} | SFH Loss: {loss_sfh:.3f} | Sim Type Loss: {loss_sim_type:.3f} | Mass-SFR Loss: {loss_mass_sfr:.3f}')
     return total_loss, loss_sfh, loss_sim_type, loss_mass_sfr
 
-def train(AE, num_epochs, device, optimizer, scheduler, train_loader, val_loader):
+def compute_loss_weighted(sfh_output, sfh_target, sim_type_output, sim_type_target, mass_sfr_output, mass_sfr_target, w_reg, w_cl):
+    # Hardcoded simulation galaxy counts
+    sim_counts = {
+        0: 7445,
+        1: 1900,
+        2: 12821,
+        3: 1982,
+        4: 19354,
+        5: 12220,
+        6: 7361
+    }
+    N_tot = sum(sim_counts.values())
+    sim_weights = {k: N_tot / v for k, v in sim_counts.items()}
+
+    # Weights
+    sample_weights = torch.tensor(
+        [sim_weights[int(cls)] for cls in sim_type_target],
+        device=sim_type_target.device,
+        dtype=sfh_output.dtype
+    )
+
+    loss_sfh = ((sfh_output - sfh_target) ** 2).mean(dim=1) # Averages over SFH dim
+    loss_sfh = (loss_sfh * sample_weights).mean()
+
+    loss_mass_sfr = ((mass_sfr_output - mass_sfr_target) ** 2).mean(dim=1)
+    loss_mass_sfr = (loss_mass_sfr * sample_weights).mean()
+
+    loss_sim_type = nn.functional.cross_entropy(sim_type_output, sim_type_target, reduction='none')
+    loss_sim_type = (loss_sim_type * sample_weights).mean()
+
+    total_loss = loss_sfh + w_reg * loss_mass_sfr + w_cl * loss_sim_type
+    return total_loss, loss_sfh, loss_sim_type, loss_mass_sfr
+
+def train(AE, num_epochs, device, optimizer, scheduler, train_loader, val_loader, weighted=False):
         """
         Training the model AE with specified configuration; return a list of training losses, and validation losses for mass_sfr, sfh, sim_type.
+        weighted flag enables loss weighting, where weight = N_tot/N_sim_object_is_from
         """
         losses = [] # To store training losses
         losses_sfh = []  # To store SFH losses
@@ -117,7 +151,10 @@ def train(AE, num_epochs, device, optimizer, scheduler, train_loader, val_loader
                 mass_sfr = mass_sfr.to(device)
                 sfh_output, sim_type_output, mass_sfr_output = AE(inputs.unsqueeze(1))
                 sfh_output = sfh_output.squeeze(1)
-                loss = compute_loss(sfh_output, inputs, sim_type_output, sim_labels, mass_sfr_output, mass_sfr, 1, 1)
+                if weighted:
+                    loss = compute_loss_weighted(sfh_output, inputs, sim_type_output, sim_labels, mass_sfr_output, mass_sfr, 1, 1)
+                else:
+                    loss = compute_loss(sfh_output, inputs, sim_type_output, sim_labels, mass_sfr_output, mass_sfr, 1, 1)
                 loss = loss[0]
                 loss.backward()
                 optimizer.step()
@@ -141,7 +178,15 @@ def train(AE, num_epochs, device, optimizer, scheduler, train_loader, val_loader
                     sim_labels = sim_labels.to(device)
                     mass_sfr = mass_sfr.to(device)
                     sfh_output, sim_type_output, mass_sfr_output = AE(inputs.unsqueeze(1))
-                    loss, loss_sfh, loss_sim_type, loss_mass_sfr = compute_loss(sfh_output, inputs, sim_type_output, sim_labels, mass_sfr_output, mass_sfr, 1, 1)
+                    sfh_output = sfh_output.squeeze(1)
+                    if weighted:
+                        loss, loss_sfh, loss_sim_type, loss_mass_sfr = compute_loss_weighted(sfh_output, inputs, 
+                                                                                             sim_type_output, sim_labels, 
+                                                                                             mass_sfr_output, mass_sfr, 1, 1)
+                    else:
+                        loss, loss_sfh, loss_sim_type, loss_mass_sfr = compute_loss(sfh_output, inputs, 
+                                                                                    sim_type_output, sim_labels, 
+                                                                                    mass_sfr_output, mass_sfr, 1, 1)
                     val_loss += loss.item()
                     sfh_loss += loss_sfh.item()
                     sim_type_loss += loss_sim_type.item()

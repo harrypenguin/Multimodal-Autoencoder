@@ -89,7 +89,7 @@ def filter_data(data):
 
 
     filtered_SFH, filtered_mass_presentsfr, filtered_labels = filter_zeroes(inputHistories, mass_presentsfr, labels)
-    filtered_AH = np.array([(sfh / (np.trapz(sfh))) for sfh in filtered_SFH]) # Normalization into AHs
+    filtered_AH = np.array([(sfh / (np.trapz(sfh)) * 500) for sfh in filtered_SFH]) # Normalization into AHs
     # "Step 3"
     return filtered_AH, filtered_mass_presentsfr, filtered_labels
 
