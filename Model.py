@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class ConvAutoencoder(nn.Module):
@@ -65,9 +66,9 @@ class ConvAutoencoder(nn.Module):
         return sim_type_output
 
     def sfr_predictor(self, x):
-        x = torch.relu(self.fc_sfr1(x))
-        x = torch.relu(self.fc_sfr2(x))
-        x = torch.relu(self.fc_sfr3(x))
+        x = F.gelu(self.fc_sfr1(x))
+        x = F.gelu(self.fc_sfr2(x))
+        x = F.gelu(self.fc_sfr3(x))
         sfr_output = self.fc_sfr4(x)
         return sfr_output
     
@@ -89,7 +90,7 @@ def compute_loss(sfh_output, sfh_target, sim_type_output, sim_type_target, mass_
     mse_loss = nn.MSELoss()
     cross_entropy_loss = nn.CrossEntropyLoss()
 
-    loss_sfh = mse_loss(sfh_output, sfh_target)
+    loss_sfh = 0.01 * mse_loss(sfh_output, sfh_target)
     loss_sim_type = cross_entropy_loss(sim_type_output, sim_type_target)
     loss_mass_sfr = mse_loss(mass_sfr_output, mass_sfr_target)
 
@@ -118,12 +119,13 @@ def compute_loss_weighted(sfh_output, sfh_target, sim_type_output, sim_type_targ
         dtype=sfh_output.dtype
     )
 
-    loss_sfh = ((sfh_output - sfh_target) ** 2).mean(dim=1) # Averages over SFH dim
-    loss_sfh = (loss_sfh * sample_weights).mean()
+    mse_loss = nn.MSELoss()
+    cross_entropy_loss = nn.CrossEntropyLoss()
 
-    loss_mass_sfr = ((mass_sfr_output - mass_sfr_target) ** 2).mean(dim=1)
-    loss_mass_sfr = (loss_mass_sfr * sample_weights).mean()
-
+    loss_sfh = 0.01 * mse_loss(sfh_output, sfh_target)
+    loss_sim_type = cross_entropy_loss(sim_type_output, sim_type_target)
+    loss_mass_sfr = mse_loss(mass_sfr_output, mass_sfr_target)
+    
     loss_sim_type = nn.functional.cross_entropy(sim_type_output, sim_type_target, reduction='none')
     loss_sim_type = (loss_sim_type * sample_weights).mean()
 
@@ -142,6 +144,7 @@ def train(AE, num_epochs, device, optimizer, scheduler, train_loader, val_loader
         val_losses = []  # To store validation losses
         
         for epoch in range(num_epochs):
+            AE.train()
             total_loss = 0.0
             for data in train_loader:
                 inputs, sim_labels, mass_sfr = data
@@ -152,10 +155,11 @@ def train(AE, num_epochs, device, optimizer, scheduler, train_loader, val_loader
                 sfh_output, sim_type_output, mass_sfr_output = AE(inputs.unsqueeze(1))
                 sfh_output = sfh_output.squeeze(1)
                 if weighted:
-                    loss = compute_loss_weighted(sfh_output, inputs, sim_type_output, sim_labels, mass_sfr_output, mass_sfr, 1, 1)
+                    loss = compute_loss_weighted(sfh_output, inputs, sim_type_output, sim_labels, mass_sfr_output, mass_sfr, 10, 1)
                 else:
-                    loss = compute_loss(sfh_output, inputs, sim_type_output, sim_labels, mass_sfr_output, mass_sfr, 1, 1)
+                    loss = compute_loss(sfh_output, inputs, sim_type_output, sim_labels, mass_sfr_output, mass_sfr, 10, 1)
                 loss = loss[0]
+                # torch.nn.utils.clip_grad_norm_(AE.parameters(), 1.0)
                 loss.backward()
                 optimizer.step()
                 scheduler.step() # Experimenting with cyclicLR, updates per *batch*
@@ -164,6 +168,14 @@ def train(AE, num_epochs, device, optimizer, scheduler, train_loader, val_loader
 
             total_loss /= len(train_loader)
             losses.append(total_loss)
+
+            total_norm = 0
+            for p in AE.parameters():
+                if p.grad is not None:
+                    param_norm = p.grad.data.norm(2)
+                    total_norm += param_norm.item() ** 2
+            total_norm = total_norm ** 0.5
+            print(f"Grad norm: {total_norm:.4f}")
             
             # Validation 
             AE.eval()
@@ -182,11 +194,11 @@ def train(AE, num_epochs, device, optimizer, scheduler, train_loader, val_loader
                     if weighted:
                         loss, loss_sfh, loss_sim_type, loss_mass_sfr = compute_loss_weighted(sfh_output, inputs, 
                                                                                              sim_type_output, sim_labels, 
-                                                                                             mass_sfr_output, mass_sfr, 1, 1)
+                                                                                             mass_sfr_output, mass_sfr, 10, 1)
                     else:
                         loss, loss_sfh, loss_sim_type, loss_mass_sfr = compute_loss(sfh_output, inputs, 
                                                                                     sim_type_output, sim_labels, 
-                                                                                    mass_sfr_output, mass_sfr, 1, 1)
+                                                                                    mass_sfr_output, mass_sfr, 10, 1)
                     val_loss += loss.item()
                     sfh_loss += loss_sfh.item()
                     sim_type_loss += loss_sim_type.item()
@@ -223,7 +235,7 @@ def train_no_val(AE, num_epochs, device, optimizer, scheduler, train_loader):
                 mass_sfr = mass_sfr.to(device)
                 sfh_output, sim_type_output, mass_sfr_output = AE(inputs.unsqueeze(1))
                 sfh_output = sfh_output.squeeze(1)
-                loss = compute_loss(sfh_output, inputs, sim_type_output, sim_labels, mass_sfr_output, mass_sfr, 1, 1)
+                loss = compute_loss(sfh_output, inputs, sim_type_output, sim_labels, mass_sfr_output, mass_sfr, 10, 1)
                 loss = loss[0]
                 loss.backward()
                 optimizer.step()
